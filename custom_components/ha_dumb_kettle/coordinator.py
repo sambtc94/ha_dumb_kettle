@@ -71,8 +71,7 @@ class KettleCoordinator:
         state = self.hass.states.get(power_sensor)
         if state and state.state not in ("unknown", "unavailable"):
             try:
-                self.current_power = float(state.state)
-                self._evaluate_power(self.current_power)
+                self._evaluate_power(float(state.state))
             except (ValueError, TypeError):
                 pass
 
@@ -125,11 +124,11 @@ class KettleCoordinator:
                 new_state.entity_id,
             )
             return
-        self.current_power = power
         self._evaluate_power(power)
 
     def _evaluate_power(self, power: float) -> None:
         """Update kettle state based on the current power reading."""
+        self.current_power = power
         boiling_threshold: float = self._config_entry.options.get(
             CONF_BOILING_THRESHOLD,
             self._config_entry.data.get(CONF_BOILING_THRESHOLD, DEFAULT_BOILING_THRESHOLD),
