@@ -36,6 +36,9 @@ class KettleCoordinator:
         # Current logical state
         self.kettle_state: str = STATE_IDLE
 
+        # Latest power reading from the sensor
+        self.current_power: float | None = None
+
         # Timing
         self._boil_start: datetime | None = None
         self.last_boil_duration: float | None = None  # seconds
@@ -68,7 +71,8 @@ class KettleCoordinator:
         state = self.hass.states.get(power_sensor)
         if state and state.state not in ("unknown", "unavailable"):
             try:
-                self._evaluate_power(float(state.state))
+                self.current_power = float(state.state)
+                self._evaluate_power(self.current_power)
             except (ValueError, TypeError):
                 pass
 
@@ -121,6 +125,7 @@ class KettleCoordinator:
                 new_state.entity_id,
             )
             return
+        self.current_power = power
         self._evaluate_power(power)
 
     def _evaluate_power(self, power: float) -> None:
