@@ -1,10 +1,7 @@
 """Binary sensor platform for Dumb Kettle – fires when a boil completes."""
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
+from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
@@ -35,7 +32,6 @@ class KettleBoilCompleteSensor(BinarySensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
     _attr_name = "Boil Complete"
-    _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
     _attr_icon = "mdi:kettle-steam"
 
     def __init__(
