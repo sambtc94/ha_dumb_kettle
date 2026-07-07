@@ -1,0 +1,12 @@
+{
+  "domain": "ha_dumb_kettle",
+  "name": "Dumb Kettle",
+  "version": "1.0.0",
+  "config_flow": true,
+  "documentation": "https://github.com/sambtc94/ha_dumb_kettle",
+  "issue_tracker": "https://github.com/sambtc94/ha_dumb_kettle/issues",
+  "dependencies": [],
+  "codeowners": ["@sambtc94"],
+  "iot_class": "local_push",
+  "requirements": []
+}
