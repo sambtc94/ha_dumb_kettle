@@ -10,7 +10,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import UnitOfPower, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -35,6 +35,7 @@ async def async_setup_entry(
             KettleStateSensor(coordinator, config_entry, name),
             KettleLastBoilDurationSensor(coordinator, config_entry, name),
             KettleBoilCountSensor(coordinator, config_entry, name),
+            KettlePowerSensor(coordinator, config_entry, name),
         ]
     )
 
@@ -156,3 +157,25 @@ class KettleBoilCountSensor(_KettleBaseSensor):
     @property
     def native_value(self) -> int:
         return self._coordinator.boil_count
+
+
+# ---------------------------------------------------------------------------
+# Power consumption sensor
+# ---------------------------------------------------------------------------
+
+class KettlePowerSensor(_KettleBaseSensor):
+    """Sensor reporting the current power consumption of the kettle."""
+
+    _attr_name = "Power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:lightning-bolt"
+
+    def __init__(self, coordinator, config_entry, device_name):
+        super().__init__(coordinator, config_entry, device_name)
+        self._attr_unique_id = f"{config_entry.entry_id}_power"
+
+    @property
+    def native_value(self) -> float | None:
+        return self._coordinator.current_power

@@ -36,6 +36,9 @@ class KettleCoordinator:
         # Current logical state
         self.kettle_state: str = STATE_IDLE
 
+        # Latest power reading from the sensor
+        self.current_power: float | None = None
+
         # Timing
         self._boil_start: datetime | None = None
         self.last_boil_duration: float | None = None  # seconds
@@ -125,6 +128,7 @@ class KettleCoordinator:
 
     def _evaluate_power(self, power: float) -> None:
         """Update kettle state based on the current power reading."""
+        self.current_power = power
         boiling_threshold: float = self._config_entry.options.get(
             CONF_BOILING_THRESHOLD,
             self._config_entry.data.get(CONF_BOILING_THRESHOLD, DEFAULT_BOILING_THRESHOLD),
