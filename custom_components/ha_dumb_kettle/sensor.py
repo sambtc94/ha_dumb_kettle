@@ -1,24 +1,22 @@
-"""Sensor platform for Dumb Kettle – state, last boil duration, and boil count."""
+"""Sensor platform for Dumb Kettle – state, last boil duration, boil count and power."""
 from __future__ import annotations
 
-import logging
-from typing import Any
-
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfPower, UnitOfTime
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
+import homeassistant.util.dt as dt_util
 
-from .const import DOMAIN, STATE_BOILING, STATE_IDLE
+from .const import ATTR_BOIL_STARTED, DOMAIN, STATE_BOILING
 from .coordinator import KettleCoordinator
-
-_LOGGER = logging.getLogger(__name__)
+from .entity import KettleEntity
 
 
 async def async_setup_entry(
@@ -32,71 +30,40 @@ async def async_setup_entry(
 
     async_add_entities(
         [
-            KettleStateSensor(coordinator, config_entry, name),
-            KettleLastBoilDurationSensor(coordinator, config_entry, name),
-            KettleBoilCountSensor(coordinator, config_entry, name),
-            KettlePowerSensor(coordinator, config_entry, name),
+            KettleStateSensor(coordinator, config_entry, name, "state"),
+            KettleLastBoilDurationSensor(
+                coordinator, config_entry, name, "last_boil_duration"
+            ),
+            KettleBoilCountSensor(coordinator, config_entry, name, "boil_count"),
+            KettlePowerSensor(coordinator, config_entry, name, "power"),
         ]
     )
-
-
-# ---------------------------------------------------------------------------
-# Base class shared by all Dumb Kettle sensors
-# ---------------------------------------------------------------------------
-
-class _KettleBaseSensor(SensorEntity):
-    """Base sensor that subscribes to coordinator updates."""
-
-    _attr_has_entity_name = True
-    _attr_should_poll = False
-
-    def __init__(
-        self,
-        coordinator: KettleCoordinator,
-        config_entry: ConfigEntry,
-        device_name: str,
-    ) -> None:
-        self._coordinator = coordinator
-        self._config_entry = config_entry
-        self._device_name = device_name
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, config_entry.entry_id)},
-            name=device_name,
-            manufacturer="DIY",
-            model="Dumb Kettle Monitor",
-        )
-        self._unsub: Any = None
-
-    async def async_added_to_hass(self) -> None:
-        """Register update callback with coordinator."""
-        self._unsub = self._coordinator.register_update_callback(
-            self._handle_coordinator_update
-        )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Unregister update callback."""
-        if self._unsub:
-            self._unsub()
-            self._unsub = None
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
 
 
 # ---------------------------------------------------------------------------
 # Kettle state sensor  (idle / boiling)
 # ---------------------------------------------------------------------------
 
-class KettleStateSensor(_KettleBaseSensor):
+class KettleStateSensor(KettleEntity, SensorEntity, RestoreEntity):
     """Sensor reporting the current kettle state."""
 
-    _attr_icon = "mdi:kettle"
     _attr_name = "State"
 
-    def __init__(self, coordinator, config_entry, device_name):
-        super().__init__(coordinator, config_entry, device_name)
-        self._attr_unique_id = f"{config_entry.entry_id}_state"
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # If HA restarted mid-boil, keep the original start time so the
+        # recorded duration isn't cut short.
+        last = await self.async_get_last_state()
+        if last is not None and last.state == STATE_BOILING:
+            started = dt_util.parse_datetime(
+                str(last.attributes.get(ATTR_BOIL_STARTED, ""))
+            )
+            if started is not None:
+                self._coordinator.restore_boil_start(dt_util.as_utc(started))
+
+    @property
+    def available(self) -> bool:
+        return self._coordinator.available
 
     @property
     def native_value(self) -> str:
@@ -114,6 +81,8 @@ class KettleStateSensor(_KettleBaseSensor):
         if self._coordinator.last_boil_duration is not None:
             attrs["last_boil_duration_s"] = self._coordinator.last_boil_duration
         attrs["boil_count"] = self._coordinator.boil_count
+        if self._coordinator.boil_start is not None:
+            attrs[ATTR_BOIL_STARTED] = self._coordinator.boil_start.isoformat()
         return attrs
 
 
@@ -121,8 +90,8 @@ class KettleStateSensor(_KettleBaseSensor):
 # Last boil duration sensor
 # ---------------------------------------------------------------------------
 
-class KettleLastBoilDurationSensor(_KettleBaseSensor):
-    """Sensor reporting the duration of the most recent boil in seconds."""
+class KettleLastBoilDurationSensor(KettleEntity, RestoreSensor):
+    """Duration of the most recent boil in seconds (survives restarts)."""
 
     _attr_name = "Last Boil Duration"
     _attr_device_class = SensorDeviceClass.DURATION
@@ -130,9 +99,16 @@ class KettleLastBoilDurationSensor(_KettleBaseSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:timer-outline"
 
-    def __init__(self, coordinator, config_entry, device_name):
-        super().__init__(coordinator, config_entry, device_name)
-        self._attr_unique_id = f"{config_entry.entry_id}_last_boil_duration"
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            try:
+                self._coordinator.restore_totals(
+                    last_boil_duration=float(last.native_value)
+                )
+            except (TypeError, ValueError):
+                pass
 
     @property
     def native_value(self) -> float | None:
@@ -143,16 +119,23 @@ class KettleLastBoilDurationSensor(_KettleBaseSensor):
 # Boil count sensor
 # ---------------------------------------------------------------------------
 
-class KettleBoilCountSensor(_KettleBaseSensor):
-    """Sensor counting how many times the kettle has boiled since the integration started."""
+class KettleBoilCountSensor(KettleEntity, RestoreSensor):
+    """Running total of boils (survives restarts and reloads)."""
 
     _attr_name = "Boil Count"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_icon = "mdi:counter"
 
-    def __init__(self, coordinator, config_entry, device_name):
-        super().__init__(coordinator, config_entry, device_name)
-        self._attr_unique_id = f"{config_entry.entry_id}_boil_count"
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            try:
+                self._coordinator.restore_totals(
+                    boil_count=int(float(last.native_value))
+                )
+            except (TypeError, ValueError):
+                pass
 
     @property
     def native_value(self) -> int:
@@ -163,8 +146,8 @@ class KettleBoilCountSensor(_KettleBaseSensor):
 # Power consumption sensor
 # ---------------------------------------------------------------------------
 
-class KettlePowerSensor(_KettleBaseSensor):
-    """Sensor reporting the current power consumption of the kettle."""
+class KettlePowerSensor(KettleEntity, SensorEntity):
+    """Current power draw, mirrored from the source sensor."""
 
     _attr_name = "Power"
     _attr_device_class = SensorDeviceClass.POWER
@@ -172,9 +155,9 @@ class KettlePowerSensor(_KettleBaseSensor):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:lightning-bolt"
 
-    def __init__(self, coordinator, config_entry, device_name):
-        super().__init__(coordinator, config_entry, device_name)
-        self._attr_unique_id = f"{config_entry.entry_id}_power"
+    @property
+    def available(self) -> bool:
+        return self._coordinator.available
 
     @property
     def native_value(self) -> float | None:

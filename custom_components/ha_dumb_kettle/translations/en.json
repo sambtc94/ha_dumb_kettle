@@ -16,6 +16,9 @@
     },
     "error": {
       "entity_not_found": "The selected entity could not be found."
+    },
+    "abort": {
+      "already_configured": "This power sensor is already set up as a kettle."
     }
   },
   "options": {

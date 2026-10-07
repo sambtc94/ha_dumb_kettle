@@ -1,4 +1,5 @@
 """Constants for the Dumb Kettle integration."""
+from datetime import timedelta
 
 DOMAIN = "ha_dumb_kettle"
 
@@ -14,6 +15,12 @@ DEFAULT_BOILING_THRESHOLD = 1000  # Watts – power above this means kettle is b
 DEFAULT_IDLE_THRESHOLD = 50       # Watts – power below this means kettle is idle
 DEFAULT_MIN_BOIL_DURATION = 10    # Seconds – ignore boils shorter than this
 DEFAULT_BOIL_COMPLETE_DURATION = 30  # Seconds – how long the boil-complete sensor stays ON
+
+# A boil start restored after a restart is only trusted if it is this recent
+MAX_RESTORED_BOIL_AGE = timedelta(minutes=15)
+
+# State attribute that carries the boil start time across restarts
+ATTR_BOIL_STARTED = "boil_started"
 
 # Kettle states
 STATE_IDLE = "idle"

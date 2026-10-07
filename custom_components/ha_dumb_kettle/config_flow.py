@@ -35,6 +35,9 @@ class KettleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not self.hass.states.get(user_input[CONF_POWER_SENSOR]):
                 errors[CONF_POWER_SENSOR] = "entity_not_found"
             else:
+                # One kettle per power sensor
+                await self.async_set_unique_id(user_input[CONF_POWER_SENSOR])
+                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=user_input.get("name", "Kettle"),
                     data=user_input,
@@ -89,14 +92,14 @@ class KettleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return KettleOptionsFlow(config_entry)
+        return KettleOptionsFlow()
 
 
 class KettleOptionsFlow(config_entries.OptionsFlow):
-    """Handle options updates (re-configure thresholds without re-adding)."""
+    """Handle options updates (re-configure thresholds without re-adding).
 
-    def __init__(self, config_entry) -> None:
-        self._config_entry = config_entry
+    ``self.config_entry`` is provided by Home Assistant (2024.11+).
+    """
 
     async def async_step_init(self, user_input=None):
         errors: dict[str, str] = {}
@@ -104,7 +107,7 @@ class KettleOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        data = self._config_entry.options or self._config_entry.data
+        data = {**self.config_entry.data, **self.config_entry.options}
 
         schema = vol.Schema(
             {
