@@ -63,6 +63,9 @@ class KettleCoordinator:
         # Listeners that want to be notified of state changes
         self._update_callbacks: list[Callable] = []
 
+        # Listeners that want to know when a boil finishes (event entity)
+        self._boil_callbacks: list[Callable[[float, int], None]] = []
+
         # Cleanup holder
         self._unsub_power: Callable | None = None
 
@@ -157,6 +160,16 @@ class KettleCoordinator:
 
         return _remove
 
+    def register_boil_callback(self, callback_fn: Callable[[float, int], None]) -> Callable:
+        """Register a callback fired once per completed boil (duration, count)."""
+        self._boil_callbacks.append(callback_fn)
+
+        def _remove():
+            if callback_fn in self._boil_callbacks:
+                self._boil_callbacks.remove(callback_fn)
+
+        return _remove
+
     @callback
     def _notify_listeners(self) -> None:
         for cb in list(self._update_callbacks):
@@ -247,6 +260,8 @@ class KettleCoordinator:
                     self.boil_count,
                 )
                 self._trigger_boil_complete()
+                for cb in list(self._boil_callbacks):
+                    cb(self.last_boil_duration, self.boil_count)
             else:
                 _LOGGER.debug(
                     "Boil ignored – duration %.1f s is below minimum %s s",

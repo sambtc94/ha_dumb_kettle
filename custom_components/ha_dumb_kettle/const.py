@@ -27,4 +27,7 @@ STATE_IDLE = "idle"
 STATE_BOILING = "boiling"
 
 # Platforms
-PLATFORMS = ["sensor", "binary_sensor"]
+PLATFORMS = ["sensor", "binary_sensor", "event"]
+
+# Event types fired by the event entity
+EVENT_BOIL_COMPLETE = "boil_complete"
